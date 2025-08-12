@@ -16,7 +16,6 @@ hongjo@yonsei.ac.kr *
 
 ---
 
-# README_KR.md (Korean)
 
 # DSDL: 건설 안전을 위한 초소형 객체 검출
 
