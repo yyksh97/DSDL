@@ -10,6 +10,7 @@ A novel approach for detecting tiny PPE (safety hooks, straps) in construction s
 
 ## 📧 Contact
 yyksh2019@yonsei.ac.kr
+
 hongjo@yonsei.ac.kr *
 
 ⭐ Star to get notified when code is available!
@@ -29,6 +30,7 @@ hongjo@yonsei.ac.kr *
 
 ## 📧 문의
 yyksh2019@yonsei.ac.kr
+
 hongjo@yonsei.ac.kr *
 
 ⭐ 코드 공개 알림을 받으려면 Star 해주세요!
