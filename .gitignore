@@ -1,0 +1,9 @@
+compare/
+CONTEXT.md
+runs/
+dummy_dataset/
+make_dummy_dataset.py
+verify_dtal.py
+DSDL_clean_R4.pdf
+__pycache__/
+*.pyc

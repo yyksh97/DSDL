@@ -1,335 +1,456 @@
-# YOLOv9
+# DSDL: Distance-guided, Signed, and Densified Learning for Tiny Object Detection
 
-Implementation of paper - [YOLOv9: Learning What You Want to Learn Using Programmable Gradient Information](https://arxiv.org/abs/2402.13616)
+Official implementation of **"Tiny Object Detection Using Distance-guided, Signed, and Densified Learning (DSDL) for Construction Site Safety Monitoring"** — *Automation in Construction* (2026). [[paper]](https://www.sciencedirect.com/science/article/pii/S0926580526001706)
 
-[![arxiv.org](http://img.shields.io/badge/cs.CV-arXiv%3A2402.13616-B31B1B.svg)](https://arxiv.org/abs/2402.13616)
-[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/kadirnar/Yolov9)
-[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/merve/yolov9)
-[![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/train-yolov9-object-detection-on-custom-dataset.ipynb)
-[![OpenCV](https://img.shields.io/badge/OpenCV-BlogPost-black?logo=opencv&labelColor=blue&color=black)](https://learnopencv.com/yolov9-advancing-the-yolo-legacy/)
+DSDL is a **model-agnostic enhancement** for one-stage object detectors that addresses the *Minnow Net Problem*: tiny objects escaping detection due to coarse anchor intervals, positive-only distribution bins, and low binning resolution. DSDL improves tiny object detection **without modifying the underlying model architecture** and is compatible with any detector employing Task Alignment Learning (TAL) and Distribution Focal Loss (DFL).
 
-<div align="center">
-    <a href="./">
-        <img src="./figure/performance.png" width="79%"/>
-    </a>
-</div>
+Built on top of [YOLOv9](https://github.com/WongKinYiu/yolov9).
 
+---
 
-## Performance 
+## Contents
 
-MS COCO
+- [Method Overview](#method-overview)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Binning configurations](#binning-configurations)
+- [Training](#training)
+- [Validation](#validation)
+- [Inference / Detection](#inference--detection)
+- [Reproducing Paper Results](#reproducing-paper-results)
+- [Citation](#citation)
+- [한국어 설명](#한국어-설명)
 
-| Model | Test Size | AP<sup>val</sup> | AP<sub>50</sub><sup>val</sup> | AP<sub>75</sub><sup>val</sup> | Param. | FLOPs |
-| :-- | :-: | :-: | :-: | :-: | :-: | :-: |
-| [**YOLOv9-T**](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-t-converted.pt) | 640 | **38.3%** | **53.1%** | **41.3%** | **2.0M** | **7.7G** |
-| [**YOLOv9-S**](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-s-converted.pt) | 640 | **46.8%** | **63.4%** | **50.7%** | **7.1M** | **26.4G** |
-| [**YOLOv9-M**](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-m-converted.pt) | 640 | **51.4%** | **68.1%** | **56.1%** | **20.0M** | **76.3G** |
-| [**YOLOv9-C**](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-c-converted.pt) | 640 | **53.0%** | **70.2%** | **57.8%** | **25.3M** | **102.1G** |
-| [**YOLOv9-E**](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-e-converted.pt) | 640 | **55.6%** | **72.8%** | **60.6%** | **57.3M** | **189.0G** |
-<!-- | [**YOLOv9 (ReLU)**]() | 640 | **51.9%** | **69.1%** | **56.5%** | **25.3M** | **102.1G** | -->
+---
 
-<!-- tiny, small, and medium models will be released after the paper be accepted and published. -->
+## Method Overview
 
-## Useful Links
+DSDL consists of three components that together resolve the three "nets" of the Minnow Net Problem:
 
-<details><summary> <b>Expand</b> </summary>
+| Component | Problem Addressed | How |
+|---|---|---|
+| **D-TAL** *(Distance-guided TAL)* | **Spatial net** — GT boxes smaller than anchor strides get zero positive anchors under vanilla TAL. | For each GT, if fewer than τ anchors fall inside, supplement with the closest IoU>0 anchors. Controlled by `--dtal` and the `YOLOM` env var (τ). |
+| **S-DFL** *(Signed DFL)* | **Range net** — Vanilla DFL bins are non-negative, so boundaries beyond the GT cannot be represented. | Extend the DFL bin list to negative values. Configured via `--reg_list`. |
+| **D-DFL** *(Densified DFL)* | **Quantization net** — Uniform integer bins collapse to bins 0–1 for tiny objects, losing the probabilistic nature of DFL. | Use finer-grained non-uniform bins near zero. Configured via `--reg_list`. |
 
-Custom training: https://github.com/WongKinYiu/yolov9/issues/30#issuecomment-1960955297
-    
-ONNX export: https://github.com/WongKinYiu/yolov9/issues/2#issuecomment-1960519506 https://github.com/WongKinYiu/yolov9/issues/40#issue-2150697688 https://github.com/WongKinYiu/yolov9/issues/130#issue-2162045461
+Because S-DFL and D-DFL are both expressed through the bin list, you compose any combination by setting `--reg_list` accordingly (see [Binning configurations](#binning-configurations)).
 
-ONNX export for segmentation: https://github.com/WongKinYiu/yolov9/issues/260#issue-2191162150
-
-TensorRT inference: https://github.com/WongKinYiu/yolov9/issues/143#issuecomment-1975049660 https://github.com/WongKinYiu/yolov9/issues/34#issue-2150393690 https://github.com/WongKinYiu/yolov9/issues/79#issue-2153547004 https://github.com/WongKinYiu/yolov9/issues/143#issue-2164002309
-
-QAT TensorRT: https://github.com/WongKinYiu/yolov9/issues/327#issue-2229284136 https://github.com/WongKinYiu/yolov9/issues/253#issue-2189520073
-
-TensorRT inference for segmentation: https://github.com/WongKinYiu/yolov9/issues/446
-
-TFLite: https://github.com/WongKinYiu/yolov9/issues/374#issuecomment-2065751706
-
-OpenVINO: https://github.com/WongKinYiu/yolov9/issues/164#issue-2168540003
-
-C# ONNX inference: https://github.com/WongKinYiu/yolov9/issues/95#issue-2155974619
-
-C# OpenVINO inference: https://github.com/WongKinYiu/yolov9/issues/95#issuecomment-1968131244
-
-OpenCV: https://github.com/WongKinYiu/yolov9/issues/113#issuecomment-1971327672
-
-Hugging Face demo: https://github.com/WongKinYiu/yolov9/issues/45#issuecomment-1961496943
-
-CoLab demo: https://github.com/WongKinYiu/yolov9/pull/18
-
-ONNXSlim export: https://github.com/WongKinYiu/yolov9/pull/37
-
-YOLOv9 ROS: https://github.com/WongKinYiu/yolov9/issues/144#issue-2164210644
-
-YOLOv9 ROS TensorRT: https://github.com/WongKinYiu/yolov9/issues/145#issue-2164218595
-
-YOLOv9 Julia: https://github.com/WongKinYiu/yolov9/issues/141#issuecomment-1973710107
-
-YOLOv9 MLX: https://github.com/WongKinYiu/yolov9/issues/258#issue-2190586540
-
-YOLOv9 StrongSORT with OSNet: https://github.com/WongKinYiu/yolov9/issues/299#issue-2212093340
-
-YOLOv9 ByteTrack: https://github.com/WongKinYiu/yolov9/issues/78#issue-2153512879
-
-YOLOv9 DeepSORT: https://github.com/WongKinYiu/yolov9/issues/98#issue-2156172319
-
-YOLOv9 counting: https://github.com/WongKinYiu/yolov9/issues/84#issue-2153904804
-
-YOLOv9 speed estimation: https://github.com/WongKinYiu/yolov9/issues/456
-
-YOLOv9 face detection: https://github.com/WongKinYiu/yolov9/issues/121#issue-2160218766
-
-YOLOv9 segmentation onnxruntime: https://github.com/WongKinYiu/yolov9/issues/151#issue-2165667350
-
-Comet logging: https://github.com/WongKinYiu/yolov9/pull/110
-
-MLflow logging: https://github.com/WongKinYiu/yolov9/pull/87
-
-AnyLabeling tool: https://github.com/WongKinYiu/yolov9/issues/48#issue-2152139662
-
-AX650N deploy: https://github.com/WongKinYiu/yolov9/issues/96#issue-2156115760
-
-Conda environment: https://github.com/WongKinYiu/yolov9/pull/93
-
-AutoDL docker environment: https://github.com/WongKinYiu/yolov9/issues/112#issue-2158203480
-
-</details>
-
+---
 
 ## Installation
 
-Docker environment (recommended)
-<details><summary> <b>Expand</b> </summary>
-
-``` shell
-# create the docker container, you can change the share memory size if you have more.
-nvidia-docker run --name yolov9 -it -v your_coco_path/:/coco/ -v your_code_path/:/yolov9 --shm-size=64g nvcr.io/nvidia/pytorch:21.11-py3
-
-# apt install required packages
-apt update
-apt install -y zip htop screen libgl1-mesa-glx
-
-# pip install required packages
-pip install seaborn thop
-
-# go to code folder
-cd /yolov9
+```bash
+git clone https://github.com/yyksh97/DSDL.git
+cd DSDL
+pip install -r requirements.txt
 ```
 
-</details>
+Python ≥ 3.8, PyTorch ≥ 1.7. GPU with CUDA strongly recommended for training.
 
+---
 
-## Evaluation
+## Quick Start
 
-[`yolov9-s-converted.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-s-converted.pt) [`yolov9-m-converted.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-m-converted.pt) [`yolov9-c-converted.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-c-converted.pt) [`yolov9-e-converted.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-e-converted.pt) 
-[`yolov9-s.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-s.pt) [`yolov9-m.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-m.pt) [`yolov9-c.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-c.pt) [`yolov9-e.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-e.pt) 
-[`gelan-s.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-s.pt) [`gelan-m.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-m.pt) [`gelan-c.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c.pt) [`gelan-e.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-e.pt)
+Train YOLOv9-C with the full DSDL (D-TAL + S-DFL + D-DFL) on a custom dataset at 640px:
 
-``` shell
-# evaluate converted yolov9 models
-python val.py --data data/coco.yaml --img 640 --batch 32 --conf 0.001 --iou 0.7 --device 0 --weights './yolov9-c-converted.pt' --save-json --name yolov9_c_c_640_val
-
-# evaluate yolov9 models
-# python val_dual.py --data data/coco.yaml --img 640 --batch 32 --conf 0.001 --iou 0.7 --device 0 --weights './yolov9-c.pt' --save-json --name yolov9_c_640_val
-
-# evaluate gelan models
-# python val.py --data data/coco.yaml --img 640 --batch 32 --conf 0.001 --iou 0.7 --device 0 --weights './gelan-c.pt' --save-json --name gelan_c_640_val
+```bash
+python train_dual.py \
+    --cfg      models/detect/yolov9-c.yaml \
+    --data     path/to/your_dataset.yaml \
+    --hyp      data/hyps/hyp.scratch-high.yaml \
+    --weights  yolov9-c-converted.pt \
+    --imgsz    640 \
+    --batch    16 \
+    --epochs   50 \
+    --device   0 \
+    --dtal \
+    --reg_list -2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
 ```
 
-You will get the results:
+---
 
-```
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.530
- Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.702
- Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.578
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.362
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.585
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.693
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.392
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.652
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.702
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.541
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.760
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.844
+## Binning configurations
+
+DSDL controls DFL quantization entirely via `--reg_list` (the list of bin center values). The four ablation settings from the paper (Section 4.4):
+
+| Setting | `--reg_list` | # Bins |
+|---|---|---|
+| **Standard DFL** (baseline) | `0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 17 |
+| **S-DFL** | `-2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 19 |
+| **D-DFL** | `0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 21 |
+| **S-DFL + D-DFL** | `-2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 27 |
+
+Add `--dtal` to activate **D-TAL** on top of any of the above.
+
+### Ready-made flag snippets
+
+```bash
+# Baseline (no DSDL)
+REG_STD="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
+
+# S-DFL
+REG_S="-2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
+
+# D-DFL
+REG_D="0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
+
+# S-DFL + D-DFL (full DSDL bin set)
+REG_SD="-2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
+
+python train_dual.py --dtal --reg_list $REG_SD ...
 ```
 
+---
 
 ## Training
 
-Data preparation
+`train_dual.py` supports any model config whose detection head is one of **`Detect`, `DDetect`, `DualDetect`, `DualDDetect`, `TripleDetect`, `TripleDDetect`**. The DSDL flags transfer automatically regardless of the chosen YAML.
 
-``` shell
-bash scripts/get_coco.sh
+### Common recipe (from the paper, Section 4.4)
+
+```bash
+python train_dual.py \
+    --cfg      models/detect/yolov9-c.yaml \
+    --data     data/visdrone.yaml \
+    --hyp      data/hyps/hyp.scratch-high.yaml \
+    --weights  yolov9-c-converted.pt \
+    --imgsz    640 \
+    --batch    4 \
+    --epochs   50 \
+    --close-mosaic 15 \
+    --device   0 \
+    --dtal \
+    --reg_list -2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
 ```
 
-* Download MS COCO dataset images ([train](http://images.cocodataset.org/zips/train2017.zip), [val](http://images.cocodataset.org/zips/val2017.zip), [test](http://images.cocodataset.org/zips/test2017.zip)) and [labels](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/coco2017labels-segments.zip). If you have previously used a different version of YOLO, we strongly recommend that you delete `train2017.cache` and `val2017.cache` files, and redownload [labels](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/coco2017labels-segments.zip) 
+### YOLOv9c-P2 (for ultra-tiny objects)
 
-Single GPU training
+The paper also evaluates a YOLOv9c variant with an added P2 feature layer for higher spatial resolution. The config ships at [models/detect/yolov9-c-p2.yaml](models/detect/yolov9-c-p2.yaml) and is trained the same way (MS COCO pretraining recommended: 500 epochs pretrain, then 50 epochs fine-tune).
 
-``` shell
-# train yolov9 models
-python train_dual.py --workers 8 --device 0 --batch 16 --data data/coco.yaml --img 640 --cfg models/detect/yolov9-c.yaml --weights '' --name yolov9-c --hyp hyp.scratch-high.yaml --min-items 0 --epochs 500 --close-mosaic 15
+### DSDL CLI flags
 
-# train gelan models
-# python train.py --workers 8 --device 0 --batch 32 --data data/coco.yaml --img 640 --cfg models/detect/gelan-c.yaml --weights '' --name gelan-c --hyp hyp.scratch-high.yaml --min-items 0 --epochs 500 --close-mosaic 15
+| Flag | Default | Meaning |
+|---|---|---|
+| `--dtal` | off | Enable D-TAL (distance-supplemented anchor assignment). |
+| `--reg_list` | `0 1 … 15` | DFL bin centers. Set negatives for S-DFL, fractional for D-DFL, or both. |
+
+### τ hyperparameter
+
+The TAL target candidate count τ (Algorithm 1 in the paper) is configured via the `YOLOM` environment variable, inherited from the YOLOv9 baseline:
+
+```bash
+YOLOM=13 python train_dual.py --dtal --reg_list ...   # paper default τ=13
+YOLOM=4  python train_dual.py --dtal --reg_list ...   # ablation τ=4
+YOLOM=20 python train_dual.py --dtal --reg_list ...   # ablation τ=20
 ```
 
-Multiple GPU training
+### Multi-GPU training
 
-``` shell
-# train yolov9 models
-python -m torch.distributed.launch --nproc_per_node 8 --master_port 9527 train_dual.py --workers 8 --device 0,1,2,3,4,5,6,7 --sync-bn --batch 128 --data data/coco.yaml --img 640 --cfg models/detect/yolov9-c.yaml --weights '' --name yolov9-c --hyp hyp.scratch-high.yaml --min-items 0 --epochs 500 --close-mosaic 15
-
-# train gelan models
-# python -m torch.distributed.launch --nproc_per_node 4 --master_port 9527 train.py --workers 8 --device 0,1,2,3 --sync-bn --batch 128 --data data/coco.yaml --img 640 --cfg models/detect/gelan-c.yaml --weights '' --name gelan-c --hyp hyp.scratch-high.yaml --min-items 0 --epochs 500 --close-mosaic 15
+```bash
+python -m torch.distributed.run --nproc_per_node 2 --master_port 9527 \
+    train_dual.py \
+    --cfg models/detect/yolov9-c.yaml \
+    --data data/your.yaml \
+    --device 0,1 --sync-bn \
+    --dtal --reg_list ...
 ```
 
+---
 
-## Re-parameterization
+## Validation
 
-See [reparameterization.ipynb](https://github.com/WongKinYiu/yolov9/blob/main/tools/reparameterization.ipynb).
+Validate a trained checkpoint:
 
-
-## Inference
-
-<div align="center">
-    <a href="./">
-        <img src="./figure/horses_prediction.jpg" width="49%"/>
-    </a>
-</div>
-
-``` shell
-# inference converted yolov9 models
-python detect.py --source './data/images/horses.jpg' --img 640 --device 0 --weights './yolov9-c-converted.pt' --name yolov9_c_c_640_detect
-
-# inference yolov9 models
-# python detect_dual.py --source './data/images/horses.jpg' --img 640 --device 0 --weights './yolov9-c.pt' --name yolov9_c_640_detect
-
-# inference gelan models
-# python detect.py --source './data/images/horses.jpg' --img 640 --device 0 --weights './gelan-c.pt' --name gelan_c_c_640_detect
+```bash
+python val_dual.py \
+    --data    data/your_dataset.yaml \
+    --weights runs/train/<your_run>/weights/best.pt \
+    --imgsz   640 \
+    --batch   1 \
+    --conf    0.001 \
+    --iou     0.7 \
+    --device  0
 ```
 
+The validator prints mAP@50, mAP@50:95, and per-class metrics. No DSDL-specific flags are required at validation time — bin information is baked into the checkpoint.
+
+---
+
+## Inference / Detection
+
+Run on images or videos:
+
+```bash
+python detect_dual.py \
+    --source  path/to/images_or_video \
+    --weights runs/train/<your_run>/weights/best.pt \
+    --imgsz   640 \
+    --conf    0.25 \
+    --iou     0.45 \
+    --device  0
+```
+
+Useful options:
+- `--save-txt` — save YOLO-format labels alongside detections
+- `--save-conf` — include confidence in saved labels
+- `--view-img` — preview live (desktop)
+
+---
+
+## Reproducing Paper Results
+
+The paper reports ablations on the **YKH** (construction-site PPE) and **VisDrone** datasets. To reproduce an ablation row:
+
+1. Pretrain YOLOv9-c (or YOLOv9-c-P2) on MS COCO 2017 with standard YOLOv9 settings (`--epochs 500 --close-mosaic 15 --batch-size 36`).
+2. Fine-tune 50 epochs with the target binning config and τ:
+
+```bash
+# Full DSDL on VisDrone @ 640px, τ=13
+YOLOM=13 python train_dual.py \
+    --cfg     models/detect/yolov9-c.yaml \
+    --data    data/visdrone.yaml \
+    --weights runs/pretrain/yolov9-c/weights/last.pt \
+    --imgsz 640 --batch 4 --epochs 50 --close-mosaic 15 \
+    --dtal \
+    --reg_list -2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+```
+
+Swap `--reg_list` and `--dtal` per the [binning table](#binning-configurations) to reproduce specific rows.
+
+> **Note on pretrained weights.** When `--reg_list` changes the number of bins, detection-head channels (`4 * reg_max`) change too. The backbone transfers cleanly from vanilla YOLOv9 checkpoints, but the detection-head weights are re-initialized. This is expected behavior documented in the paper (Section 3).
+
+---
 
 ## Citation
 
-```
-@article{wang2024yolov9,
-  title={{YOLOv9}: Learning What You Want to Learn Using Programmable Gradient Information},
-  author={Wang, Chien-Yao  and Liao, Hong-Yuan Mark},
-  booktitle={arXiv preprint arXiv:2402.13616},
-  year={2024}
+If you use DSDL in your research, please cite:
+
+```bibtex
+@article{kim2026dsdl,
+  title   = {Tiny Object Detection Using Distance-guided, Signed, and Densified
+             Learning (DSDL) for Construction Site Safety Monitoring},
+  author  = {Kim, Seokhwan and Kim, Taegeon and Choi, Kichang and Joo, Siheon and Kim, Hongjo},
+  journal = {Automation in Construction},
+  year    = {2026},
+  url     = {https://www.sciencedirect.com/science/article/pii/S0926580526001706}
 }
 ```
 
-```
-@article{chang2023yolor,
-  title={{YOLOR}-Based Multi-Task Learning},
-  author={Chang, Hung-Shuo and Wang, Chien-Yao and Wang, Richard Robert and Chou, Gene and Liao, Hong-Yuan Mark},
-  journal={arXiv preprint arXiv:2309.16921},
-  year={2023}
-}
-```
-
-
-## Teaser
-
-Parts of code of [YOLOR-Based Multi-Task Learning](https://arxiv.org/abs/2309.16921) are released in the repository.
-
-<div align="center">
-    <a href="./">
-        <img src="./figure/multitask.png" width="99%"/>
-    </a>
-</div>
-
-#### Object Detection
-
-[`gelan-c-det.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c-det.pt)
-
-`object detection`
-
-``` shell
-# coco/labels/{split}/*.txt
-# bbox or polygon (1 instance 1 line)
-python train.py --workers 8 --device 0 --batch 32 --data data/coco.yaml --img 640 --cfg models/detect/gelan-c.yaml --weights '' --name gelan-c-det --hyp hyp.scratch-high.yaml --min-items 0 --epochs 300 --close-mosaic 10
-```
-
-| Model | Test Size | Param. | FLOPs | AP<sup>box</sup> |
-| :-- | :-: | :-: | :-: | :-: |
-| [**GELAN-C-DET**](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c-det.pt) | 640 | 25.3M | 102.1G |**52.3%** |
-| [**YOLOv9-C-DET**]() | 640 | 25.3M | 102.1G | **53.0%** |
-
-#### Instance Segmentation
-
-[`gelan-c-seg.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c-seg.pt)
-
-`object detection` `instance segmentation`
-
-``` shell
-# coco/labels/{split}/*.txt
-# polygon (1 instance 1 line)
-python segment/train.py --workers 8 --device 0 --batch 32  --data coco.yaml --img 640 --cfg models/segment/gelan-c-seg.yaml --weights '' --name gelan-c-seg --hyp hyp.scratch-high.yaml --no-overlap --epochs 300 --close-mosaic 10
-```
-
-| Model | Test Size | Param. | FLOPs | AP<sup>box</sup> | AP<sup>mask</sup>  |
-| :-- | :-: | :-: | :-: | :-: | :-: |
-| [**GELAN-C-SEG**](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c-seg.pt) | 640 | 27.4M | 144.6G | **52.3%** | **42.4%** |
-| [**YOLOv9-C-SEG**]() | 640 | 27.4M | 145.5G | **53.3%** | **43.5%** |
-
-#### Panoptic Segmentation
-
-[`gelan-c-pan.pt`](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c-pan.pt)
-
-`object detection` `instance segmentation` `semantic segmentation` `stuff segmentation` `panoptic segmentation`
-
-``` shell
-# coco/labels/{split}/*.txt
-# polygon (1 instance 1 line)
-# coco/stuff/{split}/*.txt
-# polygon (1 semantic 1 line)
-python panoptic/train.py --workers 8 --device 0 --batch 32  --data coco.yaml --img 640 --cfg models/panoptic/gelan-c-pan.yaml --weights '' --name gelan-c-pan --hyp hyp.scratch-high.yaml --no-overlap --epochs 300 --close-mosaic 10
-```
-
-| Model | Test Size | Param. | FLOPs | AP<sup>box</sup> | AP<sup>mask</sup>  | mIoU<sub>164k/10k</sub><sup>semantic</sup> | mIoU<sup>stuff</sup> | PQ<sup>panoptic</sup> |
-| :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| [**GELAN-C-PAN**](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c-pan.pt) | 640 | 27.6M | 146.7G | **52.6%** | **42.5%** | **39.0%/48.3%** | **52.7%** | **39.4%** |
-| [**YOLOv9-C-PAN**]() | 640 | 28.8M | 187.0G | **52.7%** | **43.0%** | **39.8%/-** | **52.2%** | **40.5%** |
-
-#### Image Captioning (not yet released)
-
-<!--[`gelan-c-cap.pt`]()-->
-
-`object detection` `instance segmentation` `semantic segmentation` `stuff segmentation` `panoptic segmentation` `image captioning`
-
-``` shell
-# coco/labels/{split}/*.txt
-# polygon (1 instance 1 line)
-# coco/stuff/{split}/*.txt
-# polygon (1 semantic 1 line)
-# coco/annotations/*.json
-# json (1 split 1 file)
-python caption/train.py --workers 8 --device 0 --batch 32  --data coco.yaml --img 640 --cfg models/caption/gelan-c-cap.yaml --weights '' --name gelan-c-cap --hyp hyp.scratch-high.yaml --no-overlap --epochs 300 --close-mosaic 10
-```
-
-| Model | Test Size | Param. | FLOPs |  AP<sup>box</sup> | AP<sup>mask</sup>  | mIoU<sub>164k/10k</sub><sup>semantic</sup>  | mIoU<sup>stuff</sup> | PQ<sup>panoptic</sup> | BLEU@4<sup>caption</sup> | CIDEr<sup>caption</sup> |
-| :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| [**GELAN-C-CAP**]() | 640 | 47.5M | - | **51.9%** | **42.6%** | **42.5%/-** | **56.5%** | **41.7%** | **38.8** | **122.3** |
-| [**YOLOv9-C-CAP**]() | 640 | 47.5M | - | **52.1%** | **42.6%** | **43.0%/-** | **56.4%** | **42.1%** | **39.1** | **122.0** |
-<!--| [**YOLOR-MT**]() | 640 | 79.3M | - | **51.0%** | **41.7%** | **-/49.6%** | **55.9%** | **40.5%** | **35.7** | **112.7** |-->
-
+---
 
 ## Acknowledgements
 
-<details><summary> <b>Expand</b> </summary>
+DSDL is implemented on top of [YOLOv9 by Wang, Yeh, and Liao (2024)](https://github.com/WongKinYiu/yolov9). The D-TAL design extends Task Alignment Learning from [TOOD (Feng et al., 2021)](https://arxiv.org/abs/2108.07755), and the DFL reformulation builds on [Generalized Focal Loss (Li et al., 2020)](https://arxiv.org/abs/2006.04388).
 
-* [https://github.com/AlexeyAB/darknet](https://github.com/AlexeyAB/darknet)
-* [https://github.com/WongKinYiu/yolor](https://github.com/WongKinYiu/yolor)
-* [https://github.com/WongKinYiu/yolov7](https://github.com/WongKinYiu/yolov7)
-* [https://github.com/VDIGPKU/DynamicDet](https://github.com/VDIGPKU/DynamicDet)
-* [https://github.com/DingXiaoH/RepVGG](https://github.com/DingXiaoH/RepVGG)
-* [https://github.com/ultralytics/yolov5](https://github.com/ultralytics/yolov5)
-* [https://github.com/meituan/YOLOv6](https://github.com/meituan/YOLOv6)
+---
 
-</details>
+# 한국어 설명
+
+본 저장소는 논문 **"Tiny Object Detection Using Distance-guided, Signed, and Densified Learning (DSDL) for Construction Site Safety Monitoring"** (*Automation in Construction*, 2026)의 공식 구현입니다. [[논문 링크]](https://www.sciencedirect.com/science/article/pii/S0926580526001706)
+
+DSDL은 **모델 구조를 바꾸지 않고** 기존 1-stage 객체 탐지기의 **tiny object 검출 성능**을 끌어올리는 **model-agnostic** 기법입니다. TAL(Task Alignment Learning)과 DFL(Distribution Focal Loss)을 사용하는 모든 검출기에 바로 얹어 쓸 수 있습니다.
+
+본 저장소는 [YOLOv9](https://github.com/WongKinYiu/yolov9) 위에 구현되어 있습니다.
+
+---
+
+## 방법 개요
+
+DSDL은 *Minnow Net Problem*(극소 객체가 성긴 그물을 빠져나가듯 검출되지 못하는 현상)을 세 가지 관점에서 해결합니다:
+
+| 컴포넌트 | 해결하는 문제 | 구현 방식 |
+|---|---|---|
+| **D-TAL** | **공간 그물** — GT 박스가 앵커 간격보다 작으면 TAL 상 positive 앵커가 0이 되는 문제 | GT 당 내부 앵커가 τ보다 적으면, 가장 가까운 IoU>0 앵커로 보충. `--dtal`과 `YOLOM` 환경변수(τ)로 제어. |
+| **S-DFL** | **범위 그물** — DFL bin이 양수만이라 GT 밖 경계를 표현 못함 | DFL bin 리스트를 음수까지 확장. `--reg_list`로 설정. |
+| **D-DFL** | **양자화 그물** — 균등 정수 bin은 극소 객체에서 0~1 bin에 쏠려 DFL의 확률적 표현력이 사라지는 문제 | 0 근처에 더 촘촘한 비균등 bin을 배치. `--reg_list`로 설정. |
+
+S-DFL과 D-DFL은 모두 `--reg_list` 하나로 표현되므로, 조합에 따라 bin 리스트만 바꾸면 됩니다.
+
+---
+
+## 설치
+
+```bash
+git clone https://github.com/yyksh97/DSDL.git
+cd DSDL
+pip install -r requirements.txt
+```
+
+Python ≥ 3.8, PyTorch ≥ 1.7. 학습에는 CUDA GPU 권장.
+
+---
+
+## 빠른 시작
+
+YOLOv9-C에 전체 DSDL(D-TAL + S-DFL + D-DFL)을 적용해 640px 해상도로 학습:
+
+```bash
+python train_dual.py \
+    --cfg      models/detect/yolov9-c.yaml \
+    --data     path/to/your_dataset.yaml \
+    --hyp      data/hyps/hyp.scratch-high.yaml \
+    --weights  yolov9-c-converted.pt \
+    --imgsz    640 \
+    --batch    16 \
+    --epochs   50 \
+    --device   0 \
+    --dtal \
+    --reg_list -2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+```
+
+---
+
+## Binning 설정
+
+DSDL의 DFL 양자화는 전부 `--reg_list`(bin 중심값 리스트)로 제어합니다. 논문에서는 다음과 같은 설정을 사용하였습니다. 
+
+| 세팅 | `--reg_list` | bin 수 |
+|---|---|---|
+| **Standard DFL** (baseline) | `0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 17 |
+| **S-DFL** | `-2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 19 |
+| **D-DFL** | `0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 21 |
+| **S-DFL + D-DFL** | `-2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 27 |
+
+여기에 `--dtal` 플래그를 더하면 **D-TAL**까지 함께 활성화됩니다.
+
+---
+
+## 학습
+
+`train_dual.py`는 detection head가 **`Detect`, `DDetect`, `DualDetect`, `DualDDetect`, `TripleDetect`, `TripleDDetect`** 중 하나인 모든 YAML을 지원합니다. 어떤 모델 YAML을 쓰든 동일한 DSDL 설정값을 사용하면 됩니다. 
+
+### 논문 재현 레시피 (4.4절)
+
+```bash
+python train_dual.py \
+    --cfg      models/detect/yolov9-c.yaml \
+    --data     data/visdrone.yaml \
+    --hyp      data/hyps/hyp.scratch-high.yaml \
+    --weights  yolov9-c-converted.pt \
+    --imgsz    640 \
+    --batch    4 \
+    --epochs   50 \
+    --close-mosaic 15 \
+    --device   0 \
+    --dtal \
+    --reg_list -2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+```
+
+### YOLOv9c-P2 (초소형 객체용)
+
+논문에서는 더 높은 공간 해상도를 위해 YOLOv9c에 P2 feature layer를 추가한 변형도 평가합니다. config은 [models/detect/yolov9-c-p2.yaml](models/detect/yolov9-c-p2.yaml)에 포함되어 있으며, 동일한 방식으로 학습합니다.
+
+### DSDL CLI 인자
+
+| 플래그 | 기본값 | 의미 |
+|---|---|---|
+| `--dtal` | off | D-TAL(거리 기반 앵커 보충) 사용 |
+| `--reg_list` | `0 1 … 15` | DFL bin 중심값. 음수를 넣으면 S-DFL, 소수를 넣으면 D-DFL이 됨 |
+
+### τ 하이퍼파라미터
+
+TAL의 목표 후보 개수 τ (논문 Algorithm 1)는 YOLOv9 기본 구현을 따라 `YOLOM` 환경변수로 조정합니다:
+
+```bash
+YOLOM=13 python train_dual.py --dtal --reg_list ...   # 논문 기본값 τ=13
+YOLOM=4  python train_dual.py --dtal --reg_list ...   # ablation τ=4
+YOLOM=20 python train_dual.py --dtal --reg_list ...   # ablation τ=20
+```
+
+### 멀티 GPU 학습
+
+```bash
+python -m torch.distributed.run --nproc_per_node 2 --master_port 9527 \
+    train_dual.py \
+    --cfg models/detect/yolov9-c.yaml \
+    --data data/your.yaml \
+    --device 0,1 --sync-bn \
+    --dtal --reg_list ...
+```
+
+---
+
+## 검증 (Validation)
+
+학습된 체크포인트 검증:
+
+```bash
+python val_dual.py \
+    --data    data/your_dataset.yaml \
+    --weights runs/train/<실행명>/weights/best.pt \
+    --imgsz   640 \
+    --batch   1 \
+    --conf    0.001 \
+    --iou     0.7 \
+    --device  0
+```
+
+mAP@50, mAP@50:95, 클래스별 지표가 출력됩니다. 검증 시점에는 별도의 DSDL 플래그가 필요하지 않습니다 — bin 정보가 체크포인트에 이미 저장되어 있습니다.
+
+---
+
+## 추론 (Inference / Detection)
+
+이미지 또는 비디오에 대해 검출 실행:
+
+```bash
+python detect_dual.py \
+    --source  path/to/images_or_video \
+    --weights runs/train/<실행명>/weights/best.pt \
+    --imgsz   640 \
+    --conf    0.25 \
+    --iou     0.45 \
+    --device  0
+```
+
+유용한 옵션:
+- `--save-txt` — 검출 결과를 YOLO 포맷 라벨 파일로 저장
+- `--save-conf` — 라벨에 confidence 함께 저장
+- `--view-img` — 실시간 미리보기 (데스크톱 환경)
+
+---
+
+## 논문 결과 재현
+
+논문은 **YKH**(건설현장 PPE) 및 **VisDrone** 데이터셋에서 ablation 실험을 수행합니다. 특정 행을 재현하려면:
+
+1. YOLOv9-c (또는 YOLOv9-c-P2)를 MS COCO 2017에서 YOLOv9 기본 설정으로 사전학습 (`--epochs 500 --close-mosaic 15 --batch-size 36`).
+2. 목표 binning 설정과 τ로 50 epoch fine-tune:
+
+```bash
+# VisDrone @ 640px, τ=13, 전체 DSDL
+YOLOM=13 python train_dual.py \
+    --cfg     models/detect/yolov9-c.yaml \
+    --data    data/visdrone.yaml \
+    --weights runs/pretrain/yolov9-c/weights/last.pt \
+    --imgsz 640 --batch 4 --epochs 50 --close-mosaic 15 \
+    --dtal \
+    --reg_list -2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+```
+
+[Binning 표](#binning-configurations)에 따라 `--reg_list`와 `--dtal`을 바꿔주면 각 ablation 행을 재현할 수 있습니다.
+
+> **사전학습 가중치 관련.** `--reg_list`로 bin 개수를 바꾸면 detection head 채널 수(`4 * reg_max`)도 달라집니다. 백본은 기존 YOLOv9 체크포인트에서 그대로 전이되지만 detection head는 새로 초기화됩니다. 이는 논문 3절에서 의도된 동작입니다.
+
+---
+
+## 인용
+
+연구에 DSDL을 사용하시면 다음과 같이 인용해주세요:
+
+```bibtex
+@article{kim2026dsdl,
+  title   = {Tiny Object Detection Using Distance-guided, Signed, and Densified
+             Learning (DSDL) for Construction Site Safety Monitoring},
+  author  = {Kim, Seokhwan and Kim, Taegeon and Choi, Kichang and Joo, Siheon and Kim, Hongjo},
+  journal = {Automation in Construction},
+  year    = {2026},
+  url     = {https://www.sciencedirect.com/science/article/pii/S0926580526001706}
+}
+```
+
+---
+
+## Acknowledgements / 감사의 말
+
+DSDL은 [YOLOv9 (Wang, Yeh, Liao, 2024)](https://github.com/WongKinYiu/yolov9) 위에 구현되었습니다. D-TAL 설계는 [TOOD (Feng et al., 2021)](https://arxiv.org/abs/2108.07755)의 Task Alignment Learning을 확장한 것이며, DFL 재정의는 [Generalized Focal Loss (Li et al., 2020)](https://arxiv.org/abs/2006.04388)에 기반합니다.

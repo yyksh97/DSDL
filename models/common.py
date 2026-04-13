@@ -231,11 +231,13 @@ class DWConvTranspose2d(nn.ConvTranspose2d):
 
 class DFL(nn.Module):
     # DFL module
-    def __init__(self, c1=17):
+    def __init__(self, c1=17, reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]):
         super().__init__()
         self.conv = nn.Conv2d(c1, 1, 1, bias=False).requires_grad_(False)
-        self.conv.weight.data[:] = nn.Parameter(torch.arange(c1, dtype=torch.float).view(1, c1, 1, 1)) # / 120.0
+        # self.conv.weight.data[:] = nn.Parameter(torch.arange(c1, dtype=torch.float).view(1, c1, 1, 1)) # / 120.0
+        self.conv.weight.data[:] = nn.Parameter(torch.tensor(reg_list, dtype=torch.float).view(1, c1, 1, 1))
         self.c1 = c1
+        self.reg_list = reg_list
         # self.bn = nn.BatchNorm2d(4)
 
     def forward(self, x):

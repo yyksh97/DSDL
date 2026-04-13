@@ -44,12 +44,14 @@ def select_highest_overlaps(mask_pos, overlaps, n_max_boxes):
         mask_pos = torch.where(mask_multi_gts, is_max_overlaps, mask_pos)  # (b, n_max_boxes, h*w)
         fg_mask = mask_pos.sum(-2)
     # find each grid serve which gt(index)
+    if mask_pos.dtype == torch.bool:
+        mask_pos = mask_pos.float()
     target_gt_idx = mask_pos.argmax(-2)  # (b, h*w)
     return target_gt_idx, fg_mask, mask_pos
 
 
 class TaskAlignedAssigner(nn.Module):
-    def __init__(self, topk=13, num_classes=80, alpha=1.0, beta=6.0, eps=1e-9):
+    def __init__(self, topk=13, num_classes=80, alpha=1.0, beta=6.0, eps=1e-9, **kwargs):
         super().__init__()
         self.topk = topk
         self.num_classes = num_classes
@@ -58,8 +60,16 @@ class TaskAlignedAssigner(nn.Module):
         self.beta = beta
         self.eps = eps
 
+        self.strides = kwargs.get('strides')
+        self.kwargs = kwargs
+
     @torch.no_grad()
     def forward(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt):
+        if self.kwargs.get('dtal'):
+            return self.forward_dtal(pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt)
+        return self.forward_origin(pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt)
+
+    def forward_origin(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt):
         """This code referenced to
            https://github.com/Nioolek/PPYOLOE_pytorch/blob/master/ppyoloe/assigner/tal_assigner.py
 
@@ -103,6 +113,31 @@ class TaskAlignedAssigner(nn.Module):
 
         return target_labels, target_bboxes, target_scores, fg_mask.bool()
 
+    def forward_dtal(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt):
+        self.bs = pd_scores.size(0)
+        self.n_max_boxes = gt_bboxes.size(1)
+
+        if self.n_max_boxes == 0:
+            device = gt_bboxes.device
+            return (torch.full_like(pd_scores[..., 0], self.bg_idx).to(device),
+                    torch.zeros_like(pd_bboxes).to(device),
+                    torch.zeros_like(pd_scores).to(device),
+                    torch.zeros_like(pd_scores[..., 0]).to(device))
+
+        mask_pos, align_metric, overlaps = self.get_pos_mask_hybrid(
+            pd_scores, pd_bboxes, gt_labels, gt_bboxes, anc_points, mask_gt)
+
+        target_gt_idx, fg_mask, mask_pos = select_highest_overlaps(mask_pos, overlaps, self.n_max_boxes)
+        target_labels, target_bboxes, target_scores = self.get_targets(gt_labels, gt_bboxes, target_gt_idx, fg_mask)
+
+        align_metric *= mask_pos
+        pos_align_metrics = align_metric.amax(axis=-1, keepdim=True)
+        pos_overlaps = (overlaps * mask_pos).amax(axis=-1, keepdim=True)
+        norm_align_metric = (align_metric * pos_overlaps / (pos_align_metrics + self.eps)).amax(-2).unsqueeze(-1)
+        target_scores = target_scores * norm_align_metric
+
+        return target_labels, target_bboxes, target_scores, fg_mask.bool()
+
     def get_pos_mask(self, pd_scores, pd_bboxes, gt_labels, gt_bboxes, anc_points, mask_gt):
 
         # get anchor_align metric, (b, max_num_obj, h*w)
@@ -115,6 +150,81 @@ class TaskAlignedAssigner(nn.Module):
         # merge all mask to a final mask, (b, max_num_obj, h*w)
         mask_pos = mask_topk * mask_in_gts * mask_gt
 
+        return mask_pos, align_metric, overlaps
+
+    def get_pos_mask_hybrid(self, pd_scores, pd_bboxes, gt_labels, gt_bboxes, anc_points, mask_gt):
+        """D-TAL hybrid positive-anchor selection.
+
+        For each GT, use standard TAL top-k if enough anchors fall inside the GT box;
+        otherwise take all in-GT anchors and supplement with the closest IoU>0 anchors
+        (helps small objects with too few in-GT positives).
+        """
+        align_metric, overlaps = self.get_box_metrics(pd_scores, pd_bboxes, gt_labels, gt_bboxes)
+
+        bs, n_max_boxes, _ = gt_bboxes.shape
+        device = pd_scores.device
+        num_anchors = anc_points.size(0)
+
+        mask_in_gts = select_candidates_in_gts(anc_points, gt_bboxes)
+
+        mask_pos = torch.zeros((bs, n_max_boxes, num_anchors), dtype=torch.bool, device=device)
+
+        min_anchor_threshold = max(8, int(self.topk * 1.2))
+
+        gt_centers = (gt_bboxes[..., :2] + gt_bboxes[..., 2:]) / 2
+
+        for b in range(bs):
+            for n in range(n_max_boxes):
+                if mask_gt[b, n] == 0:
+                    continue
+
+                in_gts_count = mask_in_gts[b, n].sum().item()
+
+                # 1) enough in-GT anchors → standard TAL top-k
+                if in_gts_count >= min_anchor_threshold:
+                    metric_vals = align_metric[b, n] * mask_in_gts[b, n]
+                    topk_vals, topk_idx = torch.topk(metric_vals, min(self.topk, in_gts_count))
+                    mask_pos[b, n, topk_idx] = True
+                    continue
+
+                # 2) fewer in-GT anchors → take them all, then supplement
+                if in_gts_count > 0:
+                    in_gts_idx = torch.nonzero(mask_in_gts[b, n]).squeeze(-1)
+                    mask_pos[b, n, in_gts_idx] = True
+
+                additional_needed = max(0, min_anchor_threshold - in_gts_count)
+
+                if additional_needed > 0:
+                    gt_center = gt_centers[b, n:n + 1]
+                    distances = torch.cdist(gt_center.float(), anc_points[:, :2].float()).squeeze(0)
+
+                    already_selected = mask_pos[b, n]
+                    valid_distances = torch.where(
+                        already_selected,
+                        torch.full_like(distances, float('inf')),
+                        distances,
+                    )
+
+                    k_candidate = min(additional_needed * 2, (valid_distances < float('inf')).sum().item())
+                    if k_candidate > 0:
+                        topk_dist, topk_idxs = torch.topk(valid_distances, k=int(k_candidate), largest=False)
+
+                        ious_selected = overlaps[b, n, topk_idxs]
+                        valid_idxs = topk_idxs[ious_selected > 0]
+
+                        if len(valid_idxs) > 0:
+                            if len(valid_idxs) > additional_needed:
+                                ious = overlaps[b, n, valid_idxs]
+                                _, sorted_idx = torch.sort(ious, descending=True)
+                                valid_idxs = valid_idxs[sorted_idx[:int(additional_needed)]]
+                            mask_pos[b, n, valid_idxs] = True
+                        else:
+                            # fall back to nearest few anchors when no IoU>0 candidates
+                            closest_k = min(int(additional_needed // 2), len(topk_idxs))
+                            if closest_k > 0:
+                                mask_pos[b, n, topk_idxs[:closest_k]] = True
+
+        mask_pos = mask_pos & mask_gt.bool()
         return mask_pos, align_metric, overlaps
 
     def get_box_metrics(self, pd_scores, pd_bboxes, gt_labels, gt_bboxes):

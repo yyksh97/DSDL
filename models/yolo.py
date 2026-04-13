@@ -34,11 +34,12 @@ class Detect(nn.Module):
     anchors = torch.empty(0)  # init
     strides = torch.empty(0)  # init
 
-    def __init__(self, nc=80, ch=(), inplace=True):  # detection layer
+    def __init__(self, nc=80, ch=(), reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.nl = len(ch)  # number of detection layers
-        self.reg_max = 16
+        self.reg_list = reg_list
+        self.reg_max = int(len(self.reg_list))
         self.no = nc + self.reg_max * 4  # number of outputs per anchor
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
         self.stride = torch.zeros(self.nl)  # strides computed during build
@@ -48,7 +49,7 @@ class Detect(nn.Module):
             nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1)) for x in ch)
         self.cv3 = nn.ModuleList(
             nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
-        self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
+        self.dfl = DFL(self.reg_max, self.reg_list) if self.reg_max > 1 else nn.Identity()
 
     def forward(self, x):
         shape = x[0].shape  # BCHW
@@ -83,11 +84,12 @@ class DDetect(nn.Module):
     anchors = torch.empty(0)  # init
     strides = torch.empty(0)  # init
 
-    def __init__(self, nc=80, ch=(), inplace=True):  # detection layer
+    def __init__(self, nc=80, ch=(), reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.nl = len(ch)  # number of detection layers
-        self.reg_max = 16
+        self.reg_list = reg_list
+        self.reg_max = int(len(self.reg_list))
         self.no = nc + self.reg_max * 4  # number of outputs per anchor
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
         self.stride = torch.zeros(self.nl)  # strides computed during build
@@ -97,7 +99,7 @@ class DDetect(nn.Module):
             nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3, g=4), nn.Conv2d(c2, 4 * self.reg_max, 1, groups=4)) for x in ch)
         self.cv3 = nn.ModuleList(
             nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
-        self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
+        self.dfl = DFL(self.reg_max, self.reg_list) if self.reg_max > 1 else nn.Identity()
 
     def forward(self, x):
         shape = x[0].shape  # BCHW
@@ -132,11 +134,12 @@ class DualDetect(nn.Module):
     anchors = torch.empty(0)  # init
     strides = torch.empty(0)  # init
 
-    def __init__(self, nc=80, ch=(), inplace=True):  # detection layer
+    def __init__(self, nc=80, ch=(), reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.nl = len(ch) // 2  # number of detection layers
-        self.reg_max = 16
+        self.reg_list = reg_list
+        self.reg_max = int(len(self.reg_list))
         self.no = nc + self.reg_max * 4  # number of outputs per anchor
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
         self.stride = torch.zeros(self.nl)  # strides computed during build
@@ -151,8 +154,8 @@ class DualDetect(nn.Module):
             nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, 4 * self.reg_max, 1)) for x in ch[self.nl:])
         self.cv5 = nn.ModuleList(
             nn.Sequential(Conv(x, c5, 3), Conv(c5, c5, 3), nn.Conv2d(c5, self.nc, 1)) for x in ch[self.nl:])
-        self.dfl = DFL(self.reg_max)
-        self.dfl2 = DFL(self.reg_max)
+        self.dfl = DFL(self.reg_max, self.reg_list)
+        self.dfl2 = DFL(self.reg_max, self.reg_list)
 
     def forward(self, x):
         shape = x[0].shape  # BCHW
@@ -195,11 +198,12 @@ class DualDDetect(nn.Module):
     anchors = torch.empty(0)  # init
     strides = torch.empty(0)  # init
 
-    def __init__(self, nc=80, ch=(), inplace=True):  # detection layer
+    def __init__(self, nc=80, ch=(), reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.nl = len(ch) // 2  # number of detection layers
-        self.reg_max = 16
+        self.reg_list = reg_list
+        self.reg_max = int(len(self.reg_list))
         self.no = nc + self.reg_max * 4  # number of outputs per anchor
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
         self.stride = torch.zeros(self.nl)  # strides computed during build
@@ -214,8 +218,8 @@ class DualDDetect(nn.Module):
             nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3, g=4), nn.Conv2d(c4, 4 * self.reg_max, 1, groups=4)) for x in ch[self.nl:])
         self.cv5 = nn.ModuleList(
             nn.Sequential(Conv(x, c5, 3), Conv(c5, c5, 3), nn.Conv2d(c5, self.nc, 1)) for x in ch[self.nl:])
-        self.dfl = DFL(self.reg_max)
-        self.dfl2 = DFL(self.reg_max)
+        self.dfl = DFL(self.reg_max, self.reg_list)
+        self.dfl2 = DFL(self.reg_max, self.reg_list)
 
     def forward(self, x):
         shape = x[0].shape  # BCHW
@@ -264,11 +268,12 @@ class TripleDetect(nn.Module):
     anchors = torch.empty(0)  # init
     strides = torch.empty(0)  # init
 
-    def __init__(self, nc=80, ch=(), inplace=True):  # detection layer
+    def __init__(self, nc=80, ch=(), reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.nl = len(ch) // 3  # number of detection layers
-        self.reg_max = 16
+        self.reg_list = reg_list
+        self.reg_max = int(len(self.reg_list))
         self.no = nc + self.reg_max * 4  # number of outputs per anchor
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
         self.stride = torch.zeros(self.nl)  # strides computed during build
@@ -288,9 +293,9 @@ class TripleDetect(nn.Module):
             nn.Sequential(Conv(x, c6, 3), Conv(c6, c6, 3), nn.Conv2d(c6, 4 * self.reg_max, 1)) for x in ch[self.nl*2:self.nl*3])
         self.cv7 = nn.ModuleList(
             nn.Sequential(Conv(x, c7, 3), Conv(c7, c7, 3), nn.Conv2d(c7, self.nc, 1)) for x in ch[self.nl*2:self.nl*3])
-        self.dfl = DFL(self.reg_max)
-        self.dfl2 = DFL(self.reg_max)
-        self.dfl3 = DFL(self.reg_max)
+        self.dfl = DFL(self.reg_max, self.reg_list)
+        self.dfl2 = DFL(self.reg_max, self.reg_list)
+        self.dfl3 = DFL(self.reg_max, self.reg_list)
 
     def forward(self, x):
         shape = x[0].shape  # BCHW
@@ -340,11 +345,12 @@ class TripleDDetect(nn.Module):
     anchors = torch.empty(0)  # init
     strides = torch.empty(0)  # init
 
-    def __init__(self, nc=80, ch=(), inplace=True):  # detection layer
+    def __init__(self, nc=80, ch=(), reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.nl = len(ch) // 3  # number of detection layers
-        self.reg_max = 16
+        self.reg_list = reg_list
+        self.reg_max = int(len(self.reg_list))
         self.no = nc + self.reg_max * 4  # number of outputs per anchor
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
         self.stride = torch.zeros(self.nl)  # strides computed during build
@@ -356,23 +362,23 @@ class TripleDDetect(nn.Module):
         c6, c7 = make_divisible(max((ch[self.nl * 2] // 4, self.reg_max * 4, 16)), 4), \
                                 max((ch[self.nl * 2], min((self.nc * 2, 128))))  # channels
         self.cv2 = nn.ModuleList(
-            nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3, g=4), 
+            nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3, g=4),
                           nn.Conv2d(c2, 4 * self.reg_max, 1, groups=4)) for x in ch[:self.nl])
         self.cv3 = nn.ModuleList(
             nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch[:self.nl])
         self.cv4 = nn.ModuleList(
-            nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3, g=4), 
+            nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3, g=4),
                           nn.Conv2d(c4, 4 * self.reg_max, 1, groups=4)) for x in ch[self.nl:self.nl*2])
         self.cv5 = nn.ModuleList(
             nn.Sequential(Conv(x, c5, 3), Conv(c5, c5, 3), nn.Conv2d(c5, self.nc, 1)) for x in ch[self.nl:self.nl*2])
         self.cv6 = nn.ModuleList(
-            nn.Sequential(Conv(x, c6, 3), Conv(c6, c6, 3, g=4), 
+            nn.Sequential(Conv(x, c6, 3), Conv(c6, c6, 3, g=4),
                           nn.Conv2d(c6, 4 * self.reg_max, 1, groups=4)) for x in ch[self.nl*2:self.nl*3])
         self.cv7 = nn.ModuleList(
             nn.Sequential(Conv(x, c7, 3), Conv(c7, c7, 3), nn.Conv2d(c7, self.nc, 1)) for x in ch[self.nl*2:self.nl*3])
-        self.dfl = DFL(self.reg_max)
-        self.dfl2 = DFL(self.reg_max)
-        self.dfl3 = DFL(self.reg_max)
+        self.dfl = DFL(self.reg_max, self.reg_list)
+        self.dfl2 = DFL(self.reg_max, self.reg_list)
+        self.dfl3 = DFL(self.reg_max, self.reg_list)
 
     def forward(self, x):
         shape = x[0].shape  # BCHW
@@ -579,7 +585,12 @@ class BaseModel(nn.Module):
 
 class DetectionModel(BaseModel):
     # YOLO detection model
-    def __init__(self, cfg='yolo.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
+    def __init__(self,
+                 cfg='yolo.yaml',
+                 ch=3,
+                 nc=None,
+                 anchors=None,
+                 reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]):  # model, input channels, number of classes
         super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -597,7 +608,7 @@ class DetectionModel(BaseModel):
         if anchors:
             LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
             self.yaml['anchors'] = round(anchors)  # override yaml value
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
+        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch], reg_list=reg_list)  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
 
@@ -710,7 +721,7 @@ class ClassificationModel(BaseModel):
         self.model = None
 
 
-def parse_model(d, ch):  # model_dict, input_channels(3)
+def parse_model(d, ch, reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]):  # model_dict, input_channels(3)
     # Parse a YOLO model.yaml dictionary
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
     anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
@@ -758,6 +769,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         # TODO: channel, gw, gd
         elif m in {Detect, DualDetect, TripleDetect, DDetect, DualDDetect, TripleDDetect, Segment, DSegment, DualDSegment, Panoptic}:
             args.append([ch[x] for x in f])
+            if m in {Detect, DualDetect, TripleDetect, DDetect, DualDDetect, TripleDDetect}:
+                args.append(reg_list)
             # if isinstance(args[1], int):  # number of anchors
             #     args[1] = [list(range(args[1] * 2))] * len(f)
             if m in {Segment, DSegment, DualDSegment, Panoptic}:

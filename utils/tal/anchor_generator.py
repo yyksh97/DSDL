@@ -32,7 +32,21 @@ def dist2bbox(distance, anchor_points, xywh=True, dim=-1):
     return torch.cat((x1y1, x2y2), dim)  # xyxy bbox
 
 
-def bbox2dist(anchor_points, bbox, reg_max):
-    """Transform bbox(xyxy) to dist(ltrb)."""
+def bbox2dist(anchor_points, bbox, reg):
+    """Transform bbox(xyxy) to dist(ltrb).
+
+    `reg` accepts:
+      - int (reg_max): legacy behavior — clamp to [0, reg_max - 0.01].
+      - 1D tensor / list (reg_list): D-TAL bin positions — clamp to [reg_list[0], reg_list[-1] - 0.01].
+    """
     x1y1, x2y2 = torch.split(bbox, 2, -1)
-    return torch.cat((anchor_points - x1y1, x2y2 - anchor_points), -1).clamp(0, reg_max - 0.01)  # dist (lt, rb)
+    if isinstance(reg, int):
+        # legacy path — identical to original implementation
+        return torch.cat((anchor_points - x1y1, x2y2 - anchor_points), -1).clamp(0, reg - 0.01)  # dist (lt, rb)
+    # D-TAL path — reg is reg_list (tensor or list of bin positions)
+    reg_list = reg if torch.is_tensor(reg) else torch.tensor(reg, dtype=bbox.dtype)
+    if anchor_points.dim() == 2:
+        anchor_points = anchor_points.unsqueeze(0)
+    dist = torch.cat((anchor_points - x1y1, x2y2 - anchor_points), -1)
+    reg_list = reg_list.to(dist.device)
+    return dist.clamp(min=reg_list[0], max=reg_list[-1] - 0.01)

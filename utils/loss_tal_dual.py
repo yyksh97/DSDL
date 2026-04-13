@@ -60,10 +60,11 @@ class FocalLoss(nn.Module):
 
 
 class BboxLoss(nn.Module):
-    def __init__(self, reg_max, use_dfl=False):
+    def __init__(self, reg_max, use_dfl=False, reg_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]):
         super().__init__()
         self.reg_max = reg_max
         self.use_dfl = use_dfl
+        self.reg_list = torch.tensor(reg_list).float()
 
     def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
         # iou loss
@@ -71,7 +72,7 @@ class BboxLoss(nn.Module):
         pred_bboxes_pos = torch.masked_select(pred_bboxes, bbox_mask).view(-1, 4)
         target_bboxes_pos = torch.masked_select(target_bboxes, bbox_mask).view(-1, 4)
         bbox_weight = torch.masked_select(target_scores.sum(-1), fg_mask).unsqueeze(-1)
-        
+
         iou = bbox_iou(pred_bboxes_pos, target_bboxes_pos, xywh=False, CIoU=True)
         loss_iou = 1.0 - iou
 
@@ -80,9 +81,10 @@ class BboxLoss(nn.Module):
 
         # dfl loss
         if self.use_dfl:
-            dist_mask = fg_mask.unsqueeze(-1).repeat([1, 1, (self.reg_max + 1) * 4])
-            pred_dist_pos = torch.masked_select(pred_dist, dist_mask).view(-1, 4, self.reg_max + 1)
-            target_ltrb = bbox2dist(anchor_points, target_bboxes, self.reg_max)
+            num_bins = len(self.reg_list)
+            dist_mask = fg_mask.unsqueeze(-1).repeat([1, 1, num_bins * 4])
+            pred_dist_pos = torch.masked_select(pred_dist, dist_mask).view(-1, 4, num_bins)
+            target_ltrb = bbox2dist(anchor_points, target_bboxes, self.reg_list)
             target_ltrb_pos = torch.masked_select(target_ltrb, bbox_mask).view(-1, 4)
             loss_dfl = self._df_loss(pred_dist_pos, target_ltrb_pos) * bbox_weight
             loss_dfl = loss_dfl.sum() / target_scores_sum
@@ -91,21 +93,42 @@ class BboxLoss(nn.Module):
 
         return loss_iou, loss_dfl, iou
 
-    def _df_loss(self, pred_dist, target):
-        target_left = target.to(torch.long)
-        target_right = target_left + 1
-        weight_left = target_right.to(torch.float) - target
-        weight_right = 1 - weight_left
-        loss_left = F.cross_entropy(pred_dist.view(-1, self.reg_max + 1), target_left.view(-1), reduction="none").view(
-            target_left.shape) * weight_left
-        loss_right = F.cross_entropy(pred_dist.view(-1, self.reg_max + 1), target_right.view(-1),
-                                     reduction="none").view(target_left.shape) * weight_right
-        return (loss_left + loss_right).mean(-1, keepdim=True)
+    def _df_loss(self, pred_dist, target_ltrb):
+        reg_list = self.reg_list.to(pred_dist.device)
+        num_bins = len(reg_list)
+
+        # clamp target into reg_list range
+        target_ltrb_clamped = target_ltrb.clamp(min=reg_list[0], max=reg_list[-1])
+
+        # locate which bin each target falls into
+        target_bins = torch.bucketize(target_ltrb_clamped, reg_list)
+
+        # neighboring bin boundary values
+        left_bound = torch.where(target_bins == 0,
+                                 reg_list[0] * torch.ones_like(target_ltrb),
+                                 reg_list[(target_bins - 1).clamp(min=0)])
+        right_bound = torch.where(target_bins >= len(reg_list) - 1,
+                                  reg_list[-1] * torch.ones_like(target_ltrb),
+                                  reg_list[target_bins])
+
+        # interpolation weights between neighboring bins
+        denominator = (right_bound - left_bound).clamp(min=1e-6)
+        weight_right = ((target_ltrb_clamped - left_bound) / denominator).clamp(0, 1)
+        weight_left = 1 - weight_right
+
+        loss_left = F.cross_entropy(pred_dist.view(-1, num_bins),
+                                    target_bins.view(-1).clamp(max=num_bins - 1),
+                                    reduction='none').view(target_bins.shape) * weight_left
+        loss_right = F.cross_entropy(pred_dist.view(-1, num_bins),
+                                     (target_bins + 1).clamp(max=num_bins - 1).view(-1),
+                                     reduction='none').view(target_bins.shape) * weight_right
+
+        return (loss_left + loss_right).mean()
 
 
 class ComputeLoss:
     # Compute losses
-    def __init__(self, model, use_dfl=True):
+    def __init__(self, model, use_dfl=True, **kwargs):
         device = next(model.parameters()).device  # get model device
         h = model.hyp  # hyperparameters
 
@@ -128,20 +151,27 @@ class ComputeLoss:
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
         self.no = m.no
-        self.reg_max = m.reg_max
+        self.reg_list = m.reg_list
+        self.reg_max = int(len(m.reg_list))
         self.device = device
+
+        self.kwargs = kwargs
 
         self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
                                             num_classes=self.nc,
                                             alpha=float(os.getenv('YOLOA', 0.5)),
-                                            beta=float(os.getenv('YOLOB', 6.0)))
+                                            beta=float(os.getenv('YOLOB', 6.0)),
+                                            strides=self.stride,
+                                            **self.kwargs)
         self.assigner2 = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
                                             num_classes=self.nc,
                                             alpha=float(os.getenv('YOLOA', 0.5)),
-                                            beta=float(os.getenv('YOLOB', 6.0)))
-        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl).to(device)
-        self.bbox_loss2 = BboxLoss(m.reg_max - 1, use_dfl=use_dfl).to(device)
-        self.proj = torch.arange(m.reg_max).float().to(device)  # / 120.0
+                                            beta=float(os.getenv('YOLOB', 6.0)),
+                                            strides=self.stride,
+                                            **self.kwargs)
+        self.bbox_loss = BboxLoss(self.reg_max - 1, use_dfl=use_dfl, reg_list=self.reg_list).to(device)
+        self.bbox_loss2 = BboxLoss(self.reg_max - 1, use_dfl=use_dfl, reg_list=self.reg_list).to(device)
+        self.proj = torch.tensor(self.reg_list).float().to(device)  # / 120.0
         self.use_dfl = use_dfl
 
     def preprocess(self, targets, batch_size, scale_tensor):
