@@ -246,6 +246,15 @@ abstract = {Ensuring construction safety requires accurate detection of personal
 
 ---
 
+## Contact
+
+For questions or issues regarding this implementation or the paper, please contact:
+
+- Seokhwan Kim — [yyksh2019@yonsei.ac.kr](mailto:yyksh2019@yonsei.ac.kr)
+- Hongjo Kim (corresponding author) — [hongjo@yonsei.ac.kr](mailto:hongjo@yonsei.ac.kr)
+
+---
+
 ## Acknowledgements
 
 DSDL is implemented on top of [YOLOv9 by Wang, Yeh, and Liao (2024)](https://github.com/WongKinYiu/yolov9). The D-TAL design extends Task Alignment Learning from [TOOD (Feng et al., 2021)](https://arxiv.org/abs/2108.07755), and the DFL reformulation builds on [Generalized Focal Loss (Li et al., 2020)](https://arxiv.org/abs/2006.04388).
@@ -483,6 +492,15 @@ keywords = {Tiny object detection, Model-agnostic enhancement, Distance-guided T
 abstract = {Ensuring construction safety requires accurate detection of personal protective equipment (PPE) to prevent major accidents. However, PPE items such as hooks and straps are typically extremely small (fewer than 162 pixels2), making them difficult to detect with conventional computer vision models. This paper identifies fundamental limitations in object detection, termed the Minnow Net Problem, in which tiny objects escape detection due to coarse anchor intervals, positive-only distribution bins, and low binning resolution. To address these challenges, this paper introduces Distance-guided Task Alignment Learning (D-TAL), Signed Distribution Focal Loss (S-DFL), and Densified Distribution Focal Loss (D-DFL) Learning (DSDL), a set of techniques that enhance tiny object detection without requiring modifications to model architectures. Experimental results demonstrate substantial improvements, achieving up to a 48.6 percentage-point gain in tiny object detection while preserving inference speed. DSDL functions as a model-agnostic enhancement applicable to modern one-stage object detection models, and the source code is publicly accessible.}
 }
 ```
+
+---
+
+## 문의
+
+본 구현 또는 논문 관련 문의사항은 아래로 연락 주시기 바랍니다:
+
+- 김석환 — [yyksh2019@yonsei.ac.kr](mailto:yyksh2019@yonsei.ac.kr)
+- 김홍조 (교신저자) — [hongjo@yonsei.ac.kr](mailto:hongjo@yonsei.ac.kr)
 
 ---
 
