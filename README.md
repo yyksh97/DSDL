@@ -51,6 +51,8 @@ Python ≥ 3.8, PyTorch ≥ 1.7. GPU with CUDA strongly recommended for training
 
 ## Quick Start
 
+Usage is fully compatible with the original YOLOv9 — to enable DSDL, simply add `--dtal` and a `--reg_list` configuration as shown below.
+
 Train YOLOv9-C with the full DSDL (D-TAL + S-DFL + D-DFL) on a custom dataset at 640px:
 
 ```bash
@@ -71,7 +73,7 @@ python train_dual.py \
 
 ## Binning configurations
 
-DSDL controls DFL quantization entirely via `--reg_list` (the list of bin center values). The four ablation settings from the paper (Section 4.4):
+DSDL controls DFL quantization entirely via `--reg_list` (the list of bin center values). The paper uses the following configurations:
 
 | Setting | `--reg_list` | # Bins |
 |---|---|---|
@@ -81,24 +83,6 @@ DSDL controls DFL quantization entirely via `--reg_list` (the list of bin center
 | **S-DFL + D-DFL** | `-2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16` | 27 |
 
 Add `--dtal` to activate **D-TAL** on top of any of the above.
-
-### Ready-made flag snippets
-
-```bash
-# Baseline (no DSDL)
-REG_STD="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
-
-# S-DFL
-REG_S="-2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
-
-# D-DFL
-REG_D="0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
-
-# S-DFL + D-DFL (full DSDL bin set)
-REG_SD="-2 -1.5 -1 -0.75 -0.5 -0.25 0 0.25 0.5 0.75 1 1.5 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
-
-python train_dual.py --dtal --reg_list $REG_SD ...
-```
 
 ---
 
@@ -125,7 +109,7 @@ python train_dual.py \
 
 ### YOLOv9c-P2 (for ultra-tiny objects)
 
-The paper also evaluates a YOLOv9c variant with an added P2 feature layer for higher spatial resolution. The config ships at [models/detect/yolov9-c-p2.yaml](models/detect/yolov9-c-p2.yaml) and is trained the same way (MS COCO pretraining recommended: 500 epochs pretrain, then 50 epochs fine-tune).
+The paper also evaluates a YOLOv9c variant with an added P2 feature layer for higher spatial resolution. The config ships at [models/detect/yolov9-c-p2.yaml](models/detect/yolov9-c-p2.yaml) and is trained in the same way.
 
 ### DSDL CLI flags
 
@@ -217,7 +201,7 @@ YOLOM=13 python train_dual.py \
 
 Swap `--reg_list` and `--dtal` per the [binning table](#binning-configurations) to reproduce specific rows.
 
-> **Note on pretrained weights.** When `--reg_list` changes the number of bins, detection-head channels (`4 * reg_max`) change too. The backbone transfers cleanly from vanilla YOLOv9 checkpoints, but the detection-head weights are re-initialized. This is expected behavior documented in the paper (Section 3).
+> **Note on pretrained weights.** When `--reg_list` changes the number of bins, detection-head channels (`4 * reg_max`) change too. The backbone transfers cleanly from vanilla YOLOv9 checkpoints; only the final detection-head layer's output nodes change and are re-initialized. This is expected behavior per the paper (Section 3). The affected parameters are an extremely small fraction of the total model, so the impact on training and inference is negligible.
 
 ---
 
@@ -226,13 +210,18 @@ Swap `--reg_list` and `--dtal` per the [binning table](#binning-configurations) 
 If you use DSDL in your research, please cite:
 
 ```bibtex
-@article{kim2026dsdl,
-  title   = {Tiny Object Detection Using Distance-guided, Signed, and Densified
-             Learning (DSDL) for Construction Site Safety Monitoring},
-  author  = {Kim, Seokhwan and Kim, Taegeon and Choi, Kichang and Joo, Siheon and Kim, Hongjo},
-  journal = {Automation in Construction},
-  year    = {2026},
-  url     = {https://www.sciencedirect.com/science/article/pii/S0926580526001706}
+@article{KIM2026106929,
+title = {Tiny object detection using Distance-guided, Signed, and Densified Learning (DSDL) for construction site safety monitoring},
+journal = {Automation in Construction},
+volume = {187},
+pages = {106929},
+year = {2026},
+issn = {0926-5805},
+doi = {https://doi.org/10.1016/j.autcon.2026.106929},
+url = {https://www.sciencedirect.com/science/article/pii/S0926580526001706},
+author = {Seokhwan Kim and Taegeon Kim and Kichang Choi and Siheon Joo and Hongjo Kim},
+keywords = {Tiny object detection, Model-agnostic enhancement, Distance-guided Task Alignment Learning, Signed Distribution Focal Loss, Densified Distribution Focal Loss},
+abstract = {Ensuring construction safety requires accurate detection of personal protective equipment (PPE) to prevent major accidents. However, PPE items such as hooks and straps are typically extremely small (fewer than 162 pixels2), making them difficult to detect with conventional computer vision models. This paper identifies fundamental limitations in object detection, termed the Minnow Net Problem, in which tiny objects escape detection due to coarse anchor intervals, positive-only distribution bins, and low binning resolution. To address these challenges, this paper introduces Distance-guided Task Alignment Learning (D-TAL), Signed Distribution Focal Loss (S-DFL), and Densified Distribution Focal Loss (D-DFL) Learning (DSDL), a set of techniques that enhance tiny object detection without requiring modifications to model architectures. Experimental results demonstrate substantial improvements, achieving up to a 48.6 percentage-point gain in tiny object detection while preserving inference speed. DSDL functions as a model-agnostic enhancement applicable to modern one-stage object detection models, and the source code is publicly accessible.}
 }
 ```
 
@@ -246,11 +235,11 @@ DSDL is implemented on top of [YOLOv9 by Wang, Yeh, and Liao (2024)](https://git
 
 # 한국어 설명
 
-본 저장소는 논문 **"Tiny Object Detection Using Distance-guided, Signed, and Densified Learning (DSDL) for Construction Site Safety Monitoring"** (*Automation in Construction*, 2026)의 공식 구현입니다. [[논문 링크]](https://www.sciencedirect.com/science/article/pii/S0926580526001706)
+논문 **"Tiny Object Detection Using Distance-guided, Signed, and Densified Learning (DSDL) for Construction Site Safety Monitoring"** (*Automation in Construction*, 2026)의 공식 구현 레포입니다. [[논문 링크]](https://www.sciencedirect.com/science/article/pii/S0926580526001706)
 
-DSDL은 **모델 구조를 바꾸지 않고** 기존 1-stage 객체 탐지기의 **tiny object 검출 성능**을 끌어올리는 **model-agnostic** 기법입니다. TAL(Task Alignment Learning)과 DFL(Distribution Focal Loss)을 사용하는 모든 검출기에 바로 얹어 쓸 수 있습니다.
+DSDL은 **모델 구조를 바꾸지 않고** 기존 1-stage 객체 탐지기의 **tiny object 검출 성능**을 끌어올리는 **model-agnostic** 기법입니다. TAL(Task Alignment Learning)과 DFL(Distribution Focal Loss)을 사용하는 모든 검출기에 바로 적용하여 쓸 수 있습니다.
 
-본 저장소는 [YOLOv9](https://github.com/WongKinYiu/yolov9) 위에 구현되어 있습니다.
+이 코드는 [YOLOv9](https://github.com/WongKinYiu/yolov9)을 베이스로 구현하였습니다. 
 
 ---
 
@@ -281,6 +270,8 @@ Python ≥ 3.8, PyTorch ≥ 1.7. 학습에는 CUDA GPU 권장.
 ---
 
 ## 빠른 시작
+
+기본적으로 YOLOv9과 완벽히 동일한 방법으로 사용할 수 있습니다. DSDL을 적용하려면 아래와 같이 --dtal과 --reg_list 설정을 사용하면됩니다.
 
 YOLOv9-C에 전체 DSDL(D-TAL + S-DFL + D-DFL)을 적용해 640px 해상도로 학습:
 
@@ -430,7 +421,8 @@ YOLOM=13 python train_dual.py \
 
 [Binning 표](#binning-configurations)에 따라 `--reg_list`와 `--dtal`을 바꿔주면 각 ablation 행을 재현할 수 있습니다.
 
-> **사전학습 가중치 관련.** `--reg_list`로 bin 개수를 바꾸면 detection head 채널 수(`4 * reg_max`)도 달라집니다. 백본은 기존 YOLOv9 체크포인트에서 그대로 전이되지만 detection head는 새로 초기화됩니다. 이는 논문 3절에서 의도된 동작입니다.
+> **사전학습 가중치 관련.** `--reg_list`로 bin 개수를 바꾸면 detection head 채널 수(`4 * reg_max`)도 달라집니다. 백본은 기존 YOLOv9 체크포인트에서 그대로 전이되지만 detection head의 최종단의 node 갯수가 달라지며 이 부분만 새로 초기화됩니다. 이는 논문 3절에서 의도된 동작입니다.
+다만 전체 모델 크기 대비 변경되는 파라메터 갯수가 극히 미미하기 때문에 training 혹은 inference 에 미치는 성능 영향은 없다고 봐도 무방합니다.
 
 ---
 
@@ -439,13 +431,18 @@ YOLOM=13 python train_dual.py \
 연구에 DSDL을 사용하시면 다음과 같이 인용해주세요:
 
 ```bibtex
-@article{kim2026dsdl,
-  title   = {Tiny Object Detection Using Distance-guided, Signed, and Densified
-             Learning (DSDL) for Construction Site Safety Monitoring},
-  author  = {Kim, Seokhwan and Kim, Taegeon and Choi, Kichang and Joo, Siheon and Kim, Hongjo},
-  journal = {Automation in Construction},
-  year    = {2026},
-  url     = {https://www.sciencedirect.com/science/article/pii/S0926580526001706}
+@article{KIM2026106929,
+title = {Tiny object detection using Distance-guided, Signed, and Densified Learning (DSDL) for construction site safety monitoring},
+journal = {Automation in Construction},
+volume = {187},
+pages = {106929},
+year = {2026},
+issn = {0926-5805},
+doi = {https://doi.org/10.1016/j.autcon.2026.106929},
+url = {https://www.sciencedirect.com/science/article/pii/S0926580526001706},
+author = {Seokhwan Kim and Taegeon Kim and Kichang Choi and Siheon Joo and Hongjo Kim},
+keywords = {Tiny object detection, Model-agnostic enhancement, Distance-guided Task Alignment Learning, Signed Distribution Focal Loss, Densified Distribution Focal Loss},
+abstract = {Ensuring construction safety requires accurate detection of personal protective equipment (PPE) to prevent major accidents. However, PPE items such as hooks and straps are typically extremely small (fewer than 162 pixels2), making them difficult to detect with conventional computer vision models. This paper identifies fundamental limitations in object detection, termed the Minnow Net Problem, in which tiny objects escape detection due to coarse anchor intervals, positive-only distribution bins, and low binning resolution. To address these challenges, this paper introduces Distance-guided Task Alignment Learning (D-TAL), Signed Distribution Focal Loss (S-DFL), and Densified Distribution Focal Loss (D-DFL) Learning (DSDL), a set of techniques that enhance tiny object detection without requiring modifications to model architectures. Experimental results demonstrate substantial improvements, achieving up to a 48.6 percentage-point gain in tiny object detection while preserving inference speed. DSDL functions as a model-agnostic enhancement applicable to modern one-stage object detection models, and the source code is publicly accessible.}
 }
 ```
 
