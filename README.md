@@ -49,6 +49,25 @@ Python ≥ 3.8, PyTorch ≥ 1.7. GPU with CUDA strongly recommended for training
 
 ---
 
+## Pretrained Weights
+
+DSDL fine-tunes on top of standard YOLOv9 / GELAN backbones. Download the base weights from the official [YOLOv9 Releases](https://github.com/WongKinYiu/yolov9/releases):
+
+| Model | Weights |
+|---|---|
+| YOLOv9-T | [yolov9-t-converted.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-t-converted.pt) |
+| YOLOv9-S | [yolov9-s.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-s.pt) |
+| YOLOv9-M | [yolov9-m.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-m.pt) |
+| YOLOv9-C | [yolov9-c.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-c.pt) |
+| YOLOv9-E | [yolov9-e.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-e.pt) |
+| GELAN-S | [gelan-s.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-s.pt) |
+| GELAN-M | [gelan-m.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-m.pt) |
+| GELAN-C | [gelan-c.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c.pt) |
+| GELAN-E | [gelan-e.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-e.pt) |
+| **YOLOv9-C-P2** (ours, MS COCO pretrained) | [yolov9-c-p2.pt](./yolov9-c-p2.pt) |
+
+---
+
 ## Quick Start
 
 Usage is fully compatible with the original YOLOv9 — to enable DSDL, simply add `--dtal` and a `--reg_list` configuration as shown below.
@@ -266,6 +285,25 @@ pip install -r requirements.txt
 ```
 
 Python ≥ 3.8, PyTorch ≥ 1.7. 학습에는 CUDA GPU 권장.
+
+---
+
+## 사전학습 가중치
+
+DSDL은 표준 YOLOv9 / GELAN 백본 위에서 fine-tuning합니다. 기본 가중치는 공식 [YOLOv9 Releases](https://github.com/WongKinYiu/yolov9/releases)에서 받을 수 있습니다:
+
+| 모델 | 가중치 |
+|---|---|
+| YOLOv9-T | [yolov9-t-converted.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-t-converted.pt) |
+| YOLOv9-S | [yolov9-s.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-s.pt) |
+| YOLOv9-M | [yolov9-m.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-m.pt) |
+| YOLOv9-C | [yolov9-c.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-c.pt) |
+| YOLOv9-E | [yolov9-e.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9-e.pt) |
+| GELAN-S | [gelan-s.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-s.pt) |
+| GELAN-M | [gelan-m.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-m.pt) |
+| GELAN-C | [gelan-c.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c.pt) |
+| GELAN-E | [gelan-e.pt](https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-e.pt) |
+| **YOLOv9-C-P2** (본 저장소, MS COCO 사전학습) | [yolov9-c-p2.pt](./yolov9-c-p2.pt) |
 
 ---
 
